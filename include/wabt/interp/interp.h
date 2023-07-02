@@ -554,16 +554,16 @@ class RefPtr {
 };
 
 struct Value {
-  static Value WABT_VECTORCALL Make(s32);
-  static Value WABT_VECTORCALL Make(u32);
-  static Value WABT_VECTORCALL Make(s64);
-  static Value WABT_VECTORCALL Make(u64);
-  static Value WABT_VECTORCALL Make(f32);
-  static Value WABT_VECTORCALL Make(f64);
-  static Value WABT_VECTORCALL Make(v128);
-  static Value WABT_VECTORCALL Make(Ref);
+  static Value WABT_VECTORCALL Make(s32, bool);
+  static Value WABT_VECTORCALL Make(u32, bool);
+  static Value WABT_VECTORCALL Make(s64, bool);
+  static Value WABT_VECTORCALL Make(u64, bool);
+  static Value WABT_VECTORCALL Make(f32, bool);
+  static Value WABT_VECTORCALL Make(f64, bool);
+  static Value WABT_VECTORCALL Make(v128, bool);
+  static Value WABT_VECTORCALL Make(Ref, bool);
   template <typename T, u8 L>
-  static Value WABT_VECTORCALL Make(Simd<T, L>);
+  static Value WABT_VECTORCALL Make(Simd<T, L>, bool);
 
   template <typename T>
   T WABT_VECTORCALL Get() const;
@@ -579,6 +579,7 @@ struct Value {
     v128 v128_;
     Ref ref_;
   };
+  bool taint_;
 
  public:
 #ifdef WABT_DEBUG
@@ -591,7 +592,7 @@ struct Value {
   }
   ValueType type;
 #else
-  Value() : v128_(0, 0, 0, 0) {}
+  Value(bool taint = false) : v128_(0, 0, 0, 0), taint_(taint) {}
   void SetType(ValueType) {}
   void CheckType(ValueType) const {}
 #endif
@@ -1131,9 +1132,9 @@ class Thread {
   u64 PopPtr(const Memory::Ptr& memory);
 
   template <typename T>
-  void WABT_VECTORCALL Push(T);
+  void WABT_VECTORCALL Push(T, bool);
   void Push(Value);
-  void Push(Ref);
+  void Push(Ref, bool);
 
   template <typename R, typename T>
   using UnopFunc = R WABT_VECTORCALL(T);

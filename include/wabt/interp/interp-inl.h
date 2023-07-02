@@ -428,19 +428,20 @@ inline bool TypesMatch(ValueType expected, ValueType actual) {
 }
 
 //// Value ////
-inline Value WABT_VECTORCALL Value::Make(s32 val) { Value res; res.i32_ = val; res.SetType(ValueType::I32); return res; }
-inline Value WABT_VECTORCALL Value::Make(u32 val) { Value res; res.i32_ = val; res.SetType(ValueType::I32); return res; }
-inline Value WABT_VECTORCALL Value::Make(s64 val) { Value res; res.i64_ = val; res.SetType(ValueType::I64); return res; }
-inline Value WABT_VECTORCALL Value::Make(u64 val) { Value res; res.i64_ = val; res.SetType(ValueType::I64); return res; }
-inline Value WABT_VECTORCALL Value::Make(f32 val) { Value res; res.f32_ = val; res.SetType(ValueType::F32); return res; }
-inline Value WABT_VECTORCALL Value::Make(f64 val) { Value res; res.f64_ = val; res.SetType(ValueType::F64); return res; }
-inline Value WABT_VECTORCALL Value::Make(v128 val) { Value res; res.v128_ = val; res.SetType(ValueType::V128); return res; }
-inline Value WABT_VECTORCALL Value::Make(Ref val) { Value res; res.ref_ = val; res.SetType(ValueType::ExternRef); return res; }
+inline Value WABT_VECTORCALL Value::Make(s32 val, bool taint) { Value res; res.i32_ = val; res.SetType(ValueType::I32); res.taint_ = taint;return res; }
+inline Value WABT_VECTORCALL Value::Make(u32 val, bool taint) { Value res; res.i32_ = val; res.SetType(ValueType::I32); res.taint_ = taint;return res; }
+inline Value WABT_VECTORCALL Value::Make(s64 val, bool taint) { Value res; res.i64_ = val; res.SetType(ValueType::I64); res.taint_ = taint;return res; }
+inline Value WABT_VECTORCALL Value::Make(u64 val, bool taint) { Value res; res.i64_ = val; res.SetType(ValueType::I64); res.taint_ = taint;return res; }
+inline Value WABT_VECTORCALL Value::Make(f32 val, bool taint) { Value res; res.f32_ = val; res.SetType(ValueType::F32); res.taint_ = taint;return res; }
+inline Value WABT_VECTORCALL Value::Make(f64 val, bool taint) { Value res; res.f64_ = val; res.SetType(ValueType::F64); res.taint_ = taint;return res; }
+inline Value WABT_VECTORCALL Value::Make(v128 val, bool taint) { Value res; res.v128_ = val; res.SetType(ValueType::V128); res.taint_ = taint;return res; }
+inline Value WABT_VECTORCALL Value::Make(Ref val, bool taint) { Value res; res.ref_ = val; res.SetType(ValueType::ExternRef); res.taint_ = taint;return res; }
 template <typename T, u8 L>
-Value WABT_VECTORCALL Value::Make(Simd<T, L> val) {
+Value WABT_VECTORCALL Value::Make(Simd<T, L> val, bool taint) {
   Value res;
   res.v128_ = Bitcast<v128>(val);
   res.SetType(ValueType::V128);
+  res.taint_ = taint;
   return res;
 }
 
