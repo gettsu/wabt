@@ -1139,6 +1139,11 @@ u64 Thread::PopPtr(const Memory::Ptr& memory) {
   return memory->type().limits.is_64 ? Pop<u64>() : Pop<u32>();
 }
 
+bool Thread::Top() {
+  auto value = values_.back();
+  return value.Taint();
+}
+
 template <typename T>
 void WABT_VECTORCALL Thread::Push(T value, bool taint) {
   Push(Value::Make(value, taint));
@@ -1320,10 +1325,10 @@ RunResult Thread::StepInternal(Trap::Ptr* out_trap) {
       break;
     }
 
-    case O::I32Const: Push(instr.imm_u32); break;
-    case O::F32Const: Push(instr.imm_f32); break;
-    case O::I64Const: Push(instr.imm_u64); break;
-    case O::F64Const: Push(instr.imm_f64); break;
+    case O::I32Const: Push(instr.imm_u32, false); break;
+    case O::F32Const: Push(instr.imm_f32, false); break;
+    case O::I64Const: Push(instr.imm_u64, false); break;
+    case O::F64Const: Push(instr.imm_f64, false); break;
 
     case O::I32Eqz: return DoUnop(IntEqz<u32>);
     case O::I32Eq:  return DoBinop(Eq<u32>);
@@ -1546,7 +1551,7 @@ RunResult Thread::StepInternal(Trap::Ptr* out_trap) {
       break;
 
     case O::RefIsNull:
-      Push(Pop<Ref>() == Ref::Null);
+      Push(Pop<Ref>() == Ref::Null, false);
       break;
 
     case O::RefFunc:
@@ -2000,9 +2005,10 @@ RunResult Thread::DoCall(const Func::Ptr& func, Trap::Ptr* out_trap) {
 }
 
 template <typename T>
-RunResult Thread::Load(Instr instr, T* out, Trap::Ptr* out_trap) {
+RunResult Thread::Load(Instr instr, T* out, Trap::Ptr* out_trap, bool* taint) {
   Memory::Ptr memory{store_, inst_->memories()[instr.imm_u32x2.fst]};
   u64 offset = PopPtr(memory);
+  *taint = memory->taint_memory_[offset];
   TRAP_IF(Failed(memory->Load(offset, instr.imm_u32x2.snd, out)),
           StringPrintf("out of bounds memory access: access at %" PRIu64
                        "+%" PRIzd " >= max value %" PRIu64,
@@ -2014,19 +2020,21 @@ RunResult Thread::Load(Instr instr, T* out, Trap::Ptr* out_trap) {
 template <typename T, typename V>
 RunResult Thread::DoLoad(Instr instr, Trap::Ptr* out_trap) {
   V val;
-  if (Load<V>(instr, &val, out_trap) != RunResult::Ok) {
+  bool taint;
+  if (Load<V>(instr, &val, out_trap, &taint) != RunResult::Ok) {
     return RunResult::Trap;
   }
-  Push(static_cast<T>(val), false);
+  Push(static_cast<T>(val), taint);
   return RunResult::Ok;
 }
 
 template <typename T, typename V>
 RunResult Thread::DoStore(Instr instr, Trap::Ptr* out_trap) {
   Memory::Ptr memory{store_, inst_->memories()[instr.imm_u32x2.fst]};
+  bool taint = Top();
   V val = static_cast<V>(Pop<T>());
   u64 offset = PopPtr(memory);
-  TRAP_IF(Failed(memory->Store(offset, instr.imm_u32x2.snd, val)),
+  TRAP_IF(Failed(memory->Store(offset, instr.imm_u32x2.snd, val, taint)),
           StringPrintf("out of bounds memory access: access at %" PRIu64
                        "+%" PRIzd " >= max value %" PRIu64,
                        offset + instr.imm_u32x2.snd, sizeof(V),
@@ -2036,7 +2044,8 @@ RunResult Thread::DoStore(Instr instr, Trap::Ptr* out_trap) {
 
 template <typename R, typename T>
 RunResult Thread::DoUnop(UnopFunc<R, T> f) {
-  Push<R>(f(Pop<T>()), false);
+  auto taint = Top();
+  Push<R>(f(Pop<T>()), taint);
   return RunResult::Ok;
 }
 
@@ -2044,27 +2053,32 @@ template <typename R, typename T>
 RunResult Thread::DoUnop(UnopTrapFunc<R, T> f, Trap::Ptr* out_trap) {
   T out;
   std::string msg;
+  auto taint = Top();
   TRAP_IF(f(Pop<T>(), &out, &msg) == RunResult::Trap, msg);
-  Push<R>(out);
+  Push<R>(out, taint);
   return RunResult::Ok;
 }
 
 template <typename R, typename T>
 RunResult Thread::DoBinop(BinopFunc<R, T> f) {
+  bool rtaint = Top();
   auto rhs = Pop<T>();
+  bool ltaint = Top();
   auto lhs = Pop<T>();
-  Push<R>(f(lhs, rhs), false);
+  Push<R>(f(lhs, rhs), ltaint || rtaint);
   return RunResult::Ok;
 }
 
 template <typename R, typename T>
 RunResult Thread::DoBinop(BinopTrapFunc<R, T> f, Trap::Ptr* out_trap) {
+  bool rtaint = Top();
   auto rhs = Pop<T>();
+  bool ltaint = Top();
   auto lhs = Pop<T>();
   T out;
   std::string msg;
   TRAP_IF(f(lhs, rhs, &out, &msg) == RunResult::Trap, msg);
-  Push<R>(out, false);
+  Push<R>(out, ltaint || rtaint);
   return RunResult::Ok;
 }
 
@@ -2366,7 +2380,8 @@ template <typename S>
 RunResult Thread::DoSimdLoadSplat(Instr instr, Trap::Ptr* out_trap) {
   using L = typename S::LaneType;
   L val;
-  if (Load<L>(instr, &val, out_trap) != RunResult::Ok) {
+  bool taint;
+  if (Load<L>(instr, &val, out_trap, &taint) != RunResult::Ok) {
     return RunResult::Trap;
   }
   S result;
@@ -2380,7 +2395,8 @@ RunResult Thread::DoSimdLoadLane(Instr instr, Trap::Ptr* out_trap) {
   using T = typename S::LaneType;
   auto result = Pop<S>();
   T val;
-  if (Load<T>(instr, &val, out_trap) != RunResult::Ok) {
+  bool taint;
+  if (Load<T>(instr, &val, out_trap, &taint) != RunResult::Ok) {
     return RunResult::Trap;
   }
   result[instr.imm_u32x2_u8.idx] = val;
@@ -2395,7 +2411,7 @@ RunResult Thread::DoSimdStoreLane(Instr instr, Trap::Ptr* out_trap) {
   auto result = Pop<S>();
   T val = result[instr.imm_u32x2_u8.idx];
   u64 offset = PopPtr(memory);
-  TRAP_IF(Failed(memory->Store(offset, instr.imm_u32x2_u8.snd, val)),
+  TRAP_IF(Failed(memory->Store(offset, instr.imm_u32x2_u8.snd, val, false)),
           StringPrintf("out of bounds memory access: access at %" PRIu64
                        "+%" PRIzd " >= max value %" PRIu64,
                        offset + instr.imm_u32x2_u8.snd, sizeof(T),
@@ -2407,7 +2423,8 @@ template <typename S, typename T>
 RunResult Thread::DoSimdLoadZero(Instr instr, Trap::Ptr* out_trap) {
   using L = typename S::LaneType;
   L val;
-  if (Load<L>(instr, &val, out_trap) != RunResult::Ok) {
+  bool taint;
+  if (Load<L>(instr, &val, out_trap, &taint) != RunResult::Ok) {
     return RunResult::Trap;
   }
   S result;
@@ -2488,7 +2505,8 @@ RunResult Thread::DoSimdExtmul() {
 template <typename S, typename T>
 RunResult Thread::DoSimdLoadExtend(Instr instr, Trap::Ptr* out_trap) {
   T val;
-  if (Load<T>(instr, &val, out_trap) != RunResult::Ok) {
+  bool taint;
+  if (Load<T>(instr, &val, out_trap, &taint) != RunResult::Ok) {
     return RunResult::Trap;
   }
   S result;

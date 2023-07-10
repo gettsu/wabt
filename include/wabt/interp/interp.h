@@ -25,6 +25,7 @@
 #include <string_view>
 #include <type_traits>
 #include <vector>
+#include <unordered_map>
 
 #include "wabt/cast.h"
 #include "wabt/config.h"
@@ -567,6 +568,10 @@ struct Value {
 
   template <typename T>
   T WABT_VECTORCALL Get() const;
+  
+  inline bool Taint() const {
+    return taint_;
+  }
   template <typename T>
   void WABT_VECTORCALL Set(T);
 
@@ -862,6 +867,8 @@ class Memory : public Extern {
   static bool classof(const Object* obj);
   static const ObjectKind skind = ObjectKind::Memory;
   static const char* GetTypeName() { return "Memory"; }
+
+  std::unordered_map<u64, bool> taint_memory_;
   using Ptr = RefPtr<Memory>;
 
   static Memory::Ptr New(Store&, MemoryType);
@@ -874,7 +881,7 @@ class Memory : public Extern {
   template <typename T>
   Result Load(u64 offset, u64 addend, T* out) const;
   template <typename T>
-  Result WABT_VECTORCALL Store(u64 offset, u64 addend, T);
+  Result WABT_VECTORCALL Store(u64 offset, u64 addend, T, bool taint);
   Result Grow(u64 pages);
   Result Fill(u64 offset, u8 value, u64 size);
   Result Init(u64 dst_offset, const DataSegment&, u64 src_offset, u64 size);
@@ -1107,7 +1114,7 @@ class Thread {
   void Mark();
 
   Instance* GetCallerInstance();
-
+  
  private:
   friend Store;
   friend DefinedFunc;
@@ -1130,6 +1137,8 @@ class Thread {
   T WABT_VECTORCALL Pop();
   Value Pop();
   u64 PopPtr(const Memory::Ptr& memory);
+
+  bool Top();
 
   template <typename T>
   void WABT_VECTORCALL Push(T, bool);
@@ -1160,7 +1169,7 @@ class Thread {
   RunResult DoReinterpret();
 
   template <typename T>
-  RunResult Load(Instr, T* out, Trap::Ptr* out_trap);
+  RunResult Load(Instr, T* out, Trap::Ptr* out_trap, bool* taint);
   template <typename T, typename V = T>
   RunResult DoLoad(Instr, Trap::Ptr* out_trap);
   template <typename T, typename V = T>
