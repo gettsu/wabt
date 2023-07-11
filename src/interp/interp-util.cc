@@ -72,7 +72,9 @@ std::string TypedValueToString(const TypedValue& tv) {
 
 void WriteValue(Stream* stream, const TypedValue& tv) {
   std::string s = TypedValueToString(tv);
+  std::string taint_str = tv.value.Taint() ? "(tainted)" : "(untainted)";
   stream->WriteData(s.data(), s.size());
+  stream->WriteData(taint_str.data(), taint_str.size());
 }
 
 void WriteValues(Stream* stream,
