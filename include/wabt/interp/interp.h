@@ -574,6 +574,9 @@ struct Value {
   }
   template <typename T>
   void WABT_VECTORCALL Set(T);
+  inline void SetTaint(bool taint) {
+    taint_ = taint;
+  }
 
  private:
   union {

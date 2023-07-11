@@ -2084,19 +2084,22 @@ RunResult Thread::DoBinop(BinopTrapFunc<R, T> f, Trap::Ptr* out_trap) {
 
 template <typename R, typename T>
 RunResult Thread::DoConvert(Trap::Ptr* out_trap) {
+  bool taint = Top();
   auto val = Pop<T>();
   if (std::is_integral<R>::value && std::is_floating_point<T>::value) {
     // Don't use std::isnan here because T may be a non-floating-point type.
     TRAP_IF(IsNaN(val), "invalid conversion to integer");
   }
   TRAP_UNLESS(CanConvert<R>(val), "integer overflow");
-  Push<R>(Convert<R>(val), false);
+  Push<R>(Convert<R>(val), taint);
   return RunResult::Ok;
 }
 
 template <typename R, typename T>
 RunResult Thread::DoReinterpret() {
-  Push(Bitcast<R>(Pop<T>()));
+  bool taint = Top();
+  auto tmp = Pop<T>();
+  Push(Bitcast<R>(tmp), taint);
   return RunResult::Ok;
 }
 

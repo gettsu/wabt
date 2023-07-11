@@ -130,6 +130,7 @@ Result ParseWasmValue(std::string argument, Value& val) {
     result |= ParseDouble(LiteralType::Float, pval, pval_end, &parsed_value);
     val.Set(parsed_value);
   }
+  val.SetTaint(true);
   return result;
 }
 
