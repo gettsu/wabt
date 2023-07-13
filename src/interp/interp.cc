@@ -2347,7 +2347,7 @@ RunResult Thread::DoSimdIsTrue() {
   using L = typename S::LaneType;
   auto val = Pop<S>();
   Push(std::count_if(std::begin(val.v), std::end(val.v),
-                     [](L x) { return x != 0; }) >= count);
+                     [](L x) { return x != 0; }) >= count, false);
   return RunResult::Ok;
 }
 
