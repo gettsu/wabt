@@ -2008,12 +2008,14 @@ template <typename T>
 RunResult Thread::Load(Instr instr, T* out, Trap::Ptr* out_trap, bool* taint) {
   Memory::Ptr memory{store_, inst_->memories()[instr.imm_u32x2.fst]};
   u64 offset = PopPtr(memory);
-  *taint = memory->taint_memory_[offset];
+  *taint = memory->taint_memory_[offset + instr.imm_u32x2.snd];
   TRAP_IF(Failed(memory->Load(offset, instr.imm_u32x2.snd, out)),
           StringPrintf("out of bounds memory access: access at %" PRIu64
                        "+%" PRIzd " >= max value %" PRIu64,
                        offset + instr.imm_u32x2.snd, sizeof(T),
                        memory->ByteSize()));
+  if (*taint && trace_stream_)
+    trace_stream_->Writef("Load: taint propagated: %ld %d\n", offset + instr.imm_u32x2.snd, *out);
   return RunResult::Ok;
 }
 
@@ -2034,7 +2036,11 @@ RunResult Thread::DoStore(Instr instr, Trap::Ptr* out_trap) {
   bool taint = Top();
   V val = static_cast<V>(Pop<T>());
   u64 offset = PopPtr(memory);
-  TRAP_IF(Failed(memory->Store(offset, instr.imm_u32x2.snd, val, taint)),
+  memory->taint_memory_[offset + instr.imm_u32x2.snd] = taint;
+  if (taint && trace_stream_) {
+    trace_stream_->Writef("Store: taint propagated: %ld %d\n", offset + instr.imm_u32x2.snd, val);
+  }
+  TRAP_IF(Failed(memory->Store(offset, instr.imm_u32x2.snd, val)),
           StringPrintf("out of bounds memory access: access at %" PRIu64
                        "+%" PRIzd " >= max value %" PRIu64,
                        offset + instr.imm_u32x2.snd, sizeof(V),
@@ -2044,8 +2050,10 @@ RunResult Thread::DoStore(Instr instr, Trap::Ptr* out_trap) {
 
 template <typename R, typename T>
 RunResult Thread::DoUnop(UnopFunc<R, T> f) {
-  auto taint = Top();
+  bool taint = Top();
   Push<R>(f(Pop<T>()), taint);
+  if (taint && trace_stream_)
+    trace_stream_->Writef("taint propageted\n");
   return RunResult::Ok;
 }
 
@@ -2053,9 +2061,11 @@ template <typename R, typename T>
 RunResult Thread::DoUnop(UnopTrapFunc<R, T> f, Trap::Ptr* out_trap) {
   T out;
   std::string msg;
-  auto taint = Top();
+  bool taint = Top();
   TRAP_IF(f(Pop<T>(), &out, &msg) == RunResult::Trap, msg);
   Push<R>(out, taint);
+  if (taint && trace_stream_)
+    trace_stream_->Writef("taint propageted\n");
   return RunResult::Ok;
 }
 
@@ -2066,6 +2076,8 @@ RunResult Thread::DoBinop(BinopFunc<R, T> f) {
   bool ltaint = Top();
   auto lhs = Pop<T>();
   Push<R>(f(lhs, rhs), ltaint || rtaint);
+  if ((ltaint || rtaint)&& trace_stream_)
+    trace_stream_->Writef("taint propageted\n");
   return RunResult::Ok;
 }
 
@@ -2079,6 +2091,8 @@ RunResult Thread::DoBinop(BinopTrapFunc<R, T> f, Trap::Ptr* out_trap) {
   std::string msg;
   TRAP_IF(f(lhs, rhs, &out, &msg) == RunResult::Trap, msg);
   Push<R>(out, ltaint || rtaint);
+  if (ltaint || rtaint)
+    trace_stream_->Writef("taint propageted\n");
   return RunResult::Ok;
 }
 
@@ -2092,6 +2106,8 @@ RunResult Thread::DoConvert(Trap::Ptr* out_trap) {
   }
   TRAP_UNLESS(CanConvert<R>(val), "integer overflow");
   Push<R>(Convert<R>(val), taint);
+  if (taint)
+    trace_stream_->Writef("taint propageted\n");
   return RunResult::Ok;
 }
 
@@ -2100,6 +2116,8 @@ RunResult Thread::DoReinterpret() {
   bool taint = Top();
   auto tmp = Pop<T>();
   Push(Bitcast<R>(tmp), taint);
+  if (taint)
+    trace_stream_->Writef("taint propageted\n");
   return RunResult::Ok;
 }
 
@@ -2414,7 +2432,7 @@ RunResult Thread::DoSimdStoreLane(Instr instr, Trap::Ptr* out_trap) {
   auto result = Pop<S>();
   T val = result[instr.imm_u32x2_u8.idx];
   u64 offset = PopPtr(memory);
-  TRAP_IF(Failed(memory->Store(offset, instr.imm_u32x2_u8.snd, val, false)),
+  TRAP_IF(Failed(memory->Store(offset, instr.imm_u32x2_u8.snd, val)),
           StringPrintf("out of bounds memory access: access at %" PRIu64
                        "+%" PRIzd " >= max value %" PRIu64,
                        offset + instr.imm_u32x2_u8.snd, sizeof(T),

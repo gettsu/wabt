@@ -884,7 +884,7 @@ class Memory : public Extern {
   template <typename T>
   Result Load(u64 offset, u64 addend, T* out) const;
   template <typename T>
-  Result WABT_VECTORCALL Store(u64 offset, u64 addend, T, bool taint);
+  Result WABT_VECTORCALL Store(u64 offset, u64 addend, T);
   Result Grow(u64 pages);
   Result Fill(u64 offset, u8 value, u64 size);
   Result Init(u64 dst_offset, const DataSegment&, u64 src_offset, u64 size);

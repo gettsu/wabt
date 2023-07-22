@@ -665,16 +665,47 @@ Result WasiBindImports(const Module::Ptr& module,
     }
 
     if (import.type.module != "wasi_snapshot_preview1" &&
-        import.type.module != "wasi_unstable") {
-      stream->Writef("wasi error: unknown module import: `%s`\n",
+        import.type.module != "wasi_unstable" &&
+        import.type.module != "env") {
+        stream->Writef("wasi error: unknown module import: `%s`\n",
                      import.type.module.c_str());
       return Result::Error;
     }
-
+    
     auto func_type = *cast<FuncType>(import.type.type.get());
     auto import_name = StringPrintf("%s.%s", import.type.module.c_str(),
                                     import.type.name.c_str());
     HostFunc::Ptr host_func;
+    if (import.type.module  == "env") {
+      if (import.type.name == "markSource") {
+        host_func = HostFunc::New(
+            *store, func_type,
+            [=](Thread& thread, const Values& params, Values& results,
+                Trap::Ptr* trap) -> Result {
+              printf("add taint\n");
+              for (auto i = 0; i < params.size(); ++i) {
+                results[i] = params[i];
+                results[i].SetTaint(true);
+              }
+              return Result::Ok;
+            });
+        goto found;
+      } else if (import.type.name == "sink") {
+        host_func = HostFunc::New(
+            *store, func_type,
+            [=](Thread& thread, const Values& params, Values& results,
+                Trap::Ptr* trap) -> Result {
+              for (auto i = 0; i < params.size(); ++i) {
+                results[i] = params[i];
+              }
+              if (params[0].Taint()) {
+                printf("taint arrive\n");
+              }
+              return Result::Ok;
+            });
+        goto found;
+      }
+    }
 
     // TODO(sbc): Validate signatures of imports.
 #define WASI_FUNC(NAME)                                 \

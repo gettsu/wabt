@@ -746,11 +746,10 @@ T WABT_VECTORCALL Memory::UnsafeLoad(u64 offset, u64 addend) const {
 }
 
 template <typename T>
-Result WABT_VECTORCALL Memory::Store(u64 offset, u64 addend, T val, bool taint) {
+Result WABT_VECTORCALL Memory::Store(u64 offset, u64 addend, T val) {
   if (!IsValidAccess(offset, addend, sizeof(T))) {
     return Result::Error;
   }
-  taint_memory_[offset] = taint;
   MemcpyEndianAware(data_.data(), &val, data_.size(), sizeof(T),
                     offset + addend, 0, sizeof(T));
   return Result::Ok;
